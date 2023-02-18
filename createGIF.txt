@@ -1,0 +1,3 @@
+pip install torch-cluster -f https://data.pyg.org/whl/torch-1.13.1+cpu.html
+
+python -m render_rollout --rollout_path=rollouts\rollout_0.pkl
