@@ -257,11 +257,14 @@ class Simulator(nn.Module):
     def forward(self):
         pass
 
-    def _build_graph_from_raw(self, position_sequence, n_particles_per_example, particle_types, return_incidence_matrix = False):
+    def _build_graph_from_raw(self, position_sequence, n_particles_per_example, particle_types, return_incidence_matrix = False, hyper_edge_set = False):
         # Added Return Incidence Matrix,
         # If false, _build_graph_from_raw returns Ex2 matrix of node indexes.
         # If true, _build_graph_from_raw returns NxE incidence matrix of hyper edges.
         
+        #hyper_edge_set - if true returns a hyper-edge for every normal edge.
+        # e.g. edges ((1,2),(3,4)) become ([1,2,3,4],[0,0,1,1])
+
         n_total_points = position_sequence.shape[0]
         most_recent_position = position_sequence[:, -1] # (n_nodes, 2)
         velocity_sequence = time_diff(position_sequence)
@@ -311,8 +314,18 @@ class Simulator(nn.Module):
                 receiver = receivers[idx]
                 incidence_matrix[sender][receiver] = 1
             return torch.cat(node_features, dim=-1), incidence_matrix, torch.cat(edge_features, dim=-1)
-        else:
-            return torch.cat(node_features, dim=-1), torch.stack([senders, receivers]), torch.cat(edge_features, dim=-1)
+        if hyper_edge_set:
+            hyper_edge_matrix = torch.zeros((senders.shape[0]*2, 2)).to(torch.int64)
+            for idx, sender in enumerate(senders):
+                receiver = receivers[idx]
+                hyper_edge_matrix[idx*2][0]     = sender
+                hyper_edge_matrix[idx*2+1][0]   = receiver
+                hyper_edge_matrix[idx*2][1]     = idx
+                hyper_edge_matrix[idx*2+1][1]   = idx
+            return torch.cat(node_features, dim=-1), hyper_edge_matrix, torch.cat(edge_features, dim=-1)
+
+        return torch.cat(node_features, dim=-1), torch.stack([senders, receivers]), torch.cat(edge_features, dim=-1)
+        
 
     def _compute_connectivity(self, node_features, n_particles_per_example, radius, add_self_edges=True):
         # handle batches. Default is 2 examples per batch
@@ -352,8 +365,7 @@ class Simulator(nn.Module):
 
     def predict_accelerations(self, next_position, position_sequence_noise, position_sequence, n_particles_per_example, particle_types):
         noisy_position_sequence = position_sequence + position_sequence_noise
-        node_features, edge_index, e_features = self._build_graph_from_raw(noisy_position_sequence, n_particles_per_example, particle_types, return_incidence_matrix = True)#True
-        breakpoint()
+        node_features, edge_index, e_features = self._build_graph_from_raw(noisy_position_sequence, n_particles_per_example, particle_types, hyper_edge_set = True)#True
         predicted_normalized_acceleration = self._encode_process_decode(node_features, edge_index, e_features)
         next_position_adjusted = next_position + position_sequence_noise[:, -1]
         target_normalized_acceleration = self._inverse_decoder_postprocessor(next_position_adjusted, noisy_position_sequence)
