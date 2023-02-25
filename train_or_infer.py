@@ -5,7 +5,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import MessagePassing, radius_graph
+from torch_geometric.nn import MessagePassing, radius_graph 
+from torch_geometric.nn import knn_graph
+from sklearn.cluster import KMeans
+import settings # settings file for hypergraph stuff. Could put all settings in there
 
 from torch.utils.tensorboard import SummaryWriter
 os.makedirs('train_log', exist_ok=True)
@@ -20,6 +23,9 @@ eval_steps = 100
 save_steps = 100
 model_path = None # 'model425000.pth'
 device = 'cpu'#cuda
+
+
+
 with open('data/metadata.json', 'rt') as f:
     metadata = json.loads(f.read())
 num_steps = metadata['sequence_length'] - INPUT_SEQUENCE_LENGTH
@@ -333,11 +339,12 @@ class Simulator(nn.Module):
         # Specify examples id for particles/points
         batch_ids = torch.cat([torch.LongTensor([i for _ in range(n)]) for i, n in enumerate(n_particles_per_example)]).to(self._device)
         # radius = radius + 0.00001 # radius_graph takes r < radius not r <= radius
-        #breakpoint()
-        edge_index = radius_graph(node_features, r=radius, batch=batch_ids, loop=add_self_edges) # (2, n_edges)
+        breakpoint()
+        #edge_index = radius_graph(node_features, r=radius, batch=batch_ids, loop=add_self_edges) # (2, n_edges)
+        edge_index = knn_graph(node_features, k=6, batch=batch_ids, loop=add_self_edges)
+
         receivers = edge_index[0, :]
-        senders = edge_index[1, :]
-        #
+        senders   = edge_index[1, :]
         return receivers, senders
 
     def _decoder_postprocessor(self, normalized_acceleration, position_sequence):
